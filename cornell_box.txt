@@ -1,0 +1,26 @@
+# textures
+texture white solid (1 1 1)
+texture light solid (4 4 4)
+texture green solid (0 1 0)
+texture red solid (1 0 0)
+texture globe image Mercator-projection.png
+# materials
+material light lambertian light true
+material white lambertian white false
+material green lambertian green false
+material red lambertian red false
+material globe lambertian globe false
+# objects
+
+sphere (-3 2 1) .75 globe (0 0 0)
+sphere (-3 2 2.5) .75 globe (0 0 90)
+sphere (-3 2 4) .75 globe (0 0 180)
+sphere (-3 2 5.5) .75 globe (0 0 270)
+# lighting
+sphere (100 100 1100) 1000 light (0 0 0)
+# rendering
+threads 14
+rays 10 20
+camera (0 14 6) (0 0 4) (0 0 1) 90
+pixels 1280 720
+output cornell.png
