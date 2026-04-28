@@ -47,6 +47,8 @@ int main() {
         throw std::runtime_error("Cannot create socket");
     }
 
+    int opt = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in server;
     server.sin_addr.s_addr = inet_addr("127.0.0.1");
     server.sin_family = AF_INET;
