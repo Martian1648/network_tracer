@@ -40,19 +40,22 @@ std::pair<ssize_t, nlohmann::json> receive(int& c) {
     return {received, nlohmann::json::parse(msg)};
 }
 
-int main() {
-
+int main(int argc, char* argv[]) {
+    if (argc < 3) {
+        std::cout << "Usage: " << argv[0] << " {ipaddr} {port}\n";
+        return 0;
+    }
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1) {
         throw std::runtime_error("Cannot create socket");
     }
-
+    int port = std::stoi(argv[2]);
     int opt = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in server;
-    server.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server.sin_addr.s_addr = inet_addr(argv[1]);
     server.sin_family = AF_INET;
-    server.sin_port = htons(5005);
+    server.sin_port = htons(port);
     socklen_t len = sizeof(server);
 
     if (bind(s, reinterpret_cast<struct sockaddr *>(&server), len) < 0) {
@@ -99,7 +102,6 @@ int main() {
             int thread_count = std::max(1, num_threads);
             std::atomic<long long> rays_done = 0;
             const long long total_rays = static_cast<long long>(pixels.rows) * pixels.columns * samples;
-            std::cout<<parser.filename;
             // Create n-1 images for the additional threads we will launch
             std::vector<Pixels> images;
             for (int i = 0; i < thread_count-1; ++i) {
