@@ -65,4 +65,9 @@ while True:
     img_bytes = receive_exact(s, img_size)
     image = Image.frombytes("RGBA", (1280, 720), img_bytes)
     image.show()
-
+    if input("Save image? (y/n): ").strip().lower() == "y":
+        name = input("Filename (without extension): ").strip()
+        if not name:
+            name = "output"
+        image.save(f"{name}.png")
+        print(f"Saved as {name}.png")
