@@ -28,7 +28,70 @@
 #include "rectangle.h"
 #include "solid.h"
 #include "swirl.h"
-#include "triangle.h"
+#include "../json.hpp"
+#include <thread>
+
+JsonParser::JsonParser(){
+    num_threads = std::max(1u, std::thread::hardware_concurrency());
+    textures_details["white"] = {
+        {"texture_type", "solid"},
+        {"color", {1.0, 1.0, 1.0}},
+    };
+    textures_details["light"] = {
+        {"texture_type", "solid"},
+        {"color", {4.0, 4.0, 4.0}},
+    };
+    textures_details["green"] = {
+        {"texture_type", "solid"},
+        {"color", {0.0, 1.0, 0.0}},
+    };
+    textures_details["red"] = {
+        {"texture_type", "solid"},
+        {"color", {1.0, 0.0, 0.0}},
+    };
+    materials_details["light"] = {
+        {"material_type", "lambertian"},
+        {"texture_name",  "light"},
+        {"emitting",      true},
+    };
+    materials_details["white"] = {
+        {"material_type", "lambertian"},
+        {"texture_name",  "white"},
+        {"emitting",      false},
+    };
+    materials_details["green"] = {
+        {"material_type", "lambertian"},
+        {"texture_name",  "green"},
+        {"emitting",      false},
+    };
+    materials_details["red"] = {
+        {"material_type", "lambertian"},
+        {"texture_name",  "red"},
+        {"emitting",      false},
+    };
+    objects_details["default_light"] = {
+        {"center",        {100.0, 100.0, 1100.0}},
+        {"radius",        1000.0},
+        {"material_name", "light"},
+        {"angle",         {0.0, 0.0, 0.0}},
+    };
+    misc_details["rays"] = {
+        {"ray_depth",   10},
+        {"ray_samples", 20},
+    };
+
+    misc_details["camera"] = {
+        {"position",     {0.0, 14.0, 6.0}},
+        {"target_point", {0.0, 0.0, 4.0}},
+        {"up",           {0.0, 0.0, 1.0}},
+        {"fov",          90.0},
+    };
+
+    misc_details["output"] = {
+        {"name", "default.png"},
+    };
+    found_pixels = true;
+}
 
 nlohmann::json strip_routing(const nlohmann::json& cmd,
                              std::initializer_list<const char*> keys) {
@@ -37,7 +100,7 @@ nlohmann::json strip_routing(const nlohmann::json& cmd,
     return payload;
 }
 
-nlohmann::json JsonParser::handle_command(const nlohmann::json &cmd) {
+nlohmann::json JsonParser::handle_command(const nlohmann::json& cmd) {
     std::string action = get_json<std::string>(cmd, "action");
     if (action == "ADD") {
         do_add(cmd);
@@ -53,6 +116,9 @@ nlohmann::json JsonParser::handle_command(const nlohmann::json &cmd) {
     }
     else if (action == "GET") {
         return do_get(cmd);
+    }
+    else if (action == "QUIT") {
+        return cmd;
     }
     else{
         throw std::runtime_error("Unknown action");
@@ -108,10 +174,52 @@ nlohmann::json JsonParser::do_get(const nlohmann::json& cmd) const {
     if (misc_details.contains(target)) {
         return misc_details.at(target);
     }
+    if (target == "object") {
+        std::string name = get_json<std::string>(cmd, "name");
+        return objects_details.at(name);
+    }
+    if (target == "material") {
+        std::string name = get_json<std::string>(cmd, "name");
+        return materials_details.at(name);
+    }
+    if (target == "texture") {
+        std::string name = get_json<std::string>(cmd, "name");
+        return textures_details.at(name);
+    }
+    if (target == "objects") {
+        nlohmann::json package = nlohmann::json::array();
+        int i = 0;
+        for (auto [key, value] : objects_details) {
+            value["name"] = key;
+            package.push_back(value);
+        }
+        return package;
+    }
+    if (target == "materials") {
+        nlohmann::json package = nlohmann::json::array();
+        int i = 0;
+        for (auto [key, value] : materials_details) {
+            value["name"] = key;
+            package.push_back(value);
+        }
+        return package;
+    }
+    if (target == "textures") {
+        nlohmann::json package = nlohmann::json::array();
+        int i = 0;
+        for (auto [key, value] : textures_details) {
+            value["name"] = key;
+            package.push_back(value);
+        }
+        return package;
+    }
     return {};
 }
 
 void JsonParser::build() {
+    textures.clear();
+    materials.clear();
+    world = World{};
     build_misc();
     build_textures();
     build_materials();
@@ -202,8 +310,24 @@ void JsonParser::build_misc() {
         ray_samples = get_json<int>(r, "ray_samples");
         found_rays = true;
     }
-    if (misc_details.contains("name")) {
-        filename = get_json<std::string>(misc_details.at("name"), "name");
+    if (misc_details.contains("output")) {
+        filename = get_json<std::string>(misc_details.at("output"), "name");
+    }
+}
+
+void JsonParser::build_objects() {
+    for (const auto& [name, j] : objects_details) {
+        const auto center= get_json<Point3D>(j, "center");
+        const auto radius= get_json<double>(j, "radius");
+        const auto mat_name= get_json<std::string>(j, "material_name");
+        const auto angle = get_json<Vector3D>(j, "angle");
+
+        auto it = materials.find(mat_name);
+        if (it == materials.end()) {
+            throw std::runtime_error("Unknown object");
+        }
+        Material* mat = it->second.get();
+        world.add(std::make_unique<Sphere>(center, radius, mat, angle));
     }
 }
 
@@ -219,9 +343,6 @@ void JsonParser::verify() {
         throw std::runtime_error(msg + "sphere");
     }
     if (filename.empty()) {
-        throw std::runtime_error(msg + "output");
-    }
-    if (!found_output) {
         throw std::runtime_error(msg + "output");
     }
     if (materials.empty()) {

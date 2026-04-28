@@ -15,6 +15,7 @@ public:
 
     void save_ppm(const std::string& filename);
     void save_png(const std::string& filename);
+    std::vector<unsigned char> get_bytes();
 
     int columns, rows;
     std::vector<Color> values;

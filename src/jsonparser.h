@@ -33,8 +33,8 @@ T get_json(const nlohmann::json& j, const std::string& key) {
 
 class JsonParser {
 public:
-    JsonParser() = default;
-    nlohmann::json handle_command(const nlohmann::json& cmd);
+    JsonParser();
+    nlohmann::json handle_command(const nlohmann::json& cmd );
     void build();
     Camera get_camera();
     Pixels get_pixels();
@@ -65,10 +65,15 @@ private:
     Textures textures;
     Point3D camera_position, camera_target;
     Vector3D camera_up;
-    double camera_fov, aspect;
-    int rows, columns;
+    double camera_fov = 90.0;
 
-    bool found_camera, found_pixels, found_output, found_rays;
+    int rows = 720;
+    int columns = 1280;
+    double aspect = static_cast<double>(columns) / rows;
+
+    bool found_camera = false;
+    bool found_pixels = false;
+    bool found_rays = false;
 
 
 };

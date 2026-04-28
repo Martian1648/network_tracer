@@ -17,6 +17,7 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include "jsonparser.h"
 
 void print_progress(long long ray_num, long long total_rays);
 Color trace(const World& world, const Ray& ray);
@@ -24,12 +25,23 @@ Color trace_path(const BVH& bvh, const Ray& ray, int depth);
 void render(const BVH& bvh, const Camera& camera, int depth, int samples, Pixels& pixels,
             std::atomic<long long>& rays_done, long long total_rays, bool progress=false);
 
-int main(int argc, char* argv[]) {
-        const auto start = std::chrono::high_resolution_clock::now();
-        if (argc < 2) {
-            std::cout << "Usage: " << argv[0] << " {filename}\n";
-            return 0;
-        }
+
+
+
+
+void send_msg(int& c, const int& size);
+void send_msg(int& c, const std::string msg);
+void send_mesg(int&c, const nlohmann::json& obj);
+
+std::pair<ssize_t, nlohmann::json> receive(int& c) {
+    char buffer[4096] = {};
+    auto received = recv(c, &buffer, sizeof(buffer), 0);
+    std::string msg(buffer,static_cast<std::size_t>(received));
+    return {received, nlohmann::json::parse(msg)};
+}
+
+int main() {
+
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1) {
         throw std::runtime_error("Cannot create socket");
@@ -54,25 +66,130 @@ int main(int argc, char* argv[]) {
     if (c < 0) {
         throw std::runtime_error("No acceptance");
     }
+    send_msg(c, "Connection made");
 
 
-    char buffer[4096];
+    JsonParser parser;
     while (true) {
         try {
-            auto data = recv(c, &buffer, 4096, 0);
-            std::cout<<buffer<<"\n";
+            auto [received, data] = receive(c);
+            if (received <= 0) {
+                continue;
+            }
+            if (data.contains("action") && get_json<std::string>(data, "action") == "QUIT") {
+                break;
+            }
+            auto output = parser.handle_command(data);
+            if (data.contains("action") && get_json<std::string>(data, "action") == "GET") {
+                send_mesg(c, output);
+                continue;
+            }
+            parser.build();
+            World world = parser.get_world();
+            BVH bvh{world.objects};
+
+            Pixels pixels = parser.get_pixels();
+            Camera camera = parser.get_camera();
+
+            int depth = parser.ray_depth;
+            int samples = parser.ray_samples;
+            int num_threads = parser.num_threads;
+            int thread_count = std::max(1, num_threads);
+            std::atomic<long long> rays_done = 0;
+            const long long total_rays = static_cast<long long>(pixels.rows) * pixels.columns * samples;
+            std::cout<<parser.filename;
+            // Create n-1 images for the additional threads we will launch
+            std::vector<Pixels> images;
+            for (int i = 0; i < thread_count-1; ++i) {
+                images.push_back(pixels);
+            }
+
+            // launch additional threads
+            std::vector<std::thread> threads;
+            int base = samples / thread_count;
+            int extra = samples % thread_count;
+            for (int i = 0; i < thread_count-1; ++i) {
+                int thread_samples = base + (i < extra ? 1 : 0);
+                std::thread t{render, std::ref(bvh), camera, depth, thread_samples,
+                              std::ref(images.at(i)), std::ref(rays_done), total_rays, false};
+                threads.push_back(std::move(t));
+            }
+
+            // render on main thread
+            int main_samples = base + (thread_count - 1 < extra ? 1 : 0);
+            render(bvh, camera, depth, main_samples, pixels, rays_done, total_rays, false);
+
+
+            // wait for other threads to finish
+            for (std::thread& t : threads) {
+                t.join();
+            }
+
+            // collect all image data
+            for (const Pixels& p : images) {
+                for (std::size_t i = 0; i < p.values.size(); ++i) {
+                    pixels.values.at(i) += p.values.at(i);
+                }
+            }
+
+            // normalize color values by number of threads
+            for (Color& c : pixels.values) {
+                c /= samples;
+            }
+
+            //pixels.save_png(parser.filename);
+            auto z = pixels.get_bytes();
+            send_msg(c, z.size());
+            auto [_, a] = receive(c);
+            const char* bytes = reinterpret_cast<const char*>(z.data());
+            auto remaining = z.size();
+            while (remaining > 0) {
+                auto track = send(c, bytes, remaining, 0);
+                if (track <=0) {
+                    throw std::runtime_error("failure to send img");
+                }
+                bytes += track;
+                remaining -= track;
+            }
 
         }
         catch (std::exception& err) {
             std::cout << err.what() << '\n';
-            close(s);
             close(c);
+            close(s);
+
             break;
         }
     }
+    close(c);
+    close(s);
 
 }
 
+
+
+void send_msg(int& c, const int& size) {
+    nlohmann::json message = nlohmann::json::object();
+    message["type"]="WARNING";
+    message["contents"] = size;
+    auto package = message.dump();
+    send(c, package.c_str(), package.size(), 0);
+}
+void send_msg(int& c, const std::string msg) {
+    nlohmann::json message = nlohmann::json::object();
+    message["type"]="MESSAGE";
+    message["contents"] = msg;
+    auto package = message.dump();
+    send(c, package.c_str(), package.size(), 0);
+}
+void send_mesg(int&c, const nlohmann::json& obj) {
+    nlohmann::json message = nlohmann::json::object();
+    message["type"] = "ANSWER";
+    message["contents"] = obj;
+    std::cout<<message<<'\n';
+    auto package = message.dump();
+    send(c, package.c_str(), package.size(), 0 );
+}
 
 
 

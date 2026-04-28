@@ -3,6 +3,7 @@
 #include <fstream>
 #include <cmath>
 #include "color.h"
+#include <iostream>
 
 Pixels::Pixels(int columns, int rows)
   :columns{columns}, rows{rows}, values(columns*rows) {}
@@ -43,6 +44,17 @@ void Pixels::save_png(const std::string& filename) {
   if (error){
       throw std::runtime_error(lodepng_error_text(error));
   }
+}
+
+std::vector<unsigned char> Pixels::get_bytes() {
+    std::vector<unsigned char> data;
+    for(auto c :values){
+        data.push_back(to_color<unsigned char>(c.x));
+        data.push_back(to_color<unsigned char>(c.y));
+        data.push_back(to_color<unsigned char>(c.z));
+        data.push_back(255);
+    }
+    return data;
 }
 
 double gamma_correction(double value) {
