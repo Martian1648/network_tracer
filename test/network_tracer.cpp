@@ -57,7 +57,7 @@ int main() {
         throw std::runtime_error("Cannot bind");
     }
 
-    if (listen(s, 3) < 0) {
+    if (listen(s, 1) < 0) {
         throw std::runtime_error("Deaf");
     }
 
@@ -155,6 +155,7 @@ int main() {
         }
         catch (std::exception& err) {
             std::cout << err.what() << '\n';
+            send_msg(c, "Something went wrong");
             close(c);
             close(s);
 
