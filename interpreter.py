@@ -10,6 +10,9 @@ Returns a dict whose shape matches the C++ JsonParser schema exactly:
   - QUIT:            {action}
 
 Raises ShellError on bad input.
+
+
+The majority of this file was written by Claude, with some minor additions by myself.
 """
 
 import shlex
