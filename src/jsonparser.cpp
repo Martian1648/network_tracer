@@ -32,6 +32,7 @@
 #include <thread>
 
 JsonParser::JsonParser(){
+    // set defaults
     num_threads = std::max(1u, std::thread::hardware_concurrency());
     textures_details["white"] = {
         {"texture_type", "solid"},
@@ -93,6 +94,7 @@ JsonParser::JsonParser(){
     found_pixels = true;
 }
 
+// removes parents so children can be inspected directly
 nlohmann::json strip_routing(const nlohmann::json& cmd,
                              std::initializer_list<const char*> keys) {
     nlohmann::json payload = cmd;
@@ -100,6 +102,7 @@ nlohmann::json strip_routing(const nlohmann::json& cmd,
     return payload;
 }
 
+// take the input and perform requested action
 nlohmann::json JsonParser::handle_command(const nlohmann::json& cmd) {
     std::string action = get_json<std::string>(cmd, "action");
     if (action == "ADD") {
@@ -127,10 +130,12 @@ nlohmann::json JsonParser::handle_command(const nlohmann::json& cmd) {
 }
 
 void JsonParser::do_add(const nlohmann::json &cmd) {
+    // get the first layer of information, then get rid of them
     std::string type = get_json<std::string>(cmd, "type");
     std::string name = get_json<std::string>(cmd, "name");
     auto details = strip_routing(cmd, {"action", "type", "name"});
 
+    // add to state
     if (type == "texture"){
         textures_details[name] = details;
     }
@@ -148,6 +153,7 @@ void JsonParser::do_add(const nlohmann::json &cmd) {
 void JsonParser::do_delete(const nlohmann::json &cmd) {
     std::string type = get_json<std::string>(cmd, "type");
     std::string name = get_json<std::string>(cmd, "name");
+    // kinda unnecessary call of strip routing
     auto details = strip_routing(cmd, {"action", "type", "name"});
 
     if (type == "texture"){
@@ -165,15 +171,20 @@ void JsonParser::do_delete(const nlohmann::json &cmd) {
 }
 
 void JsonParser::do_set(const nlohmann::json &cmd) {
+    // get the desired section to SET, and replace the entry with parameters given by client
     std::string target = get_json<std::string>(cmd, "target");
     misc_details[target] = strip_routing(cmd, {"action", "target"});
 }
 
+
 nlohmann::json JsonParser::do_get(const nlohmann::json& cmd) const {
     std::string target = get_json<std::string>(cmd, "target");
+    // basic retrieval
     if (misc_details.contains(target)) {
         return misc_details.at(target);
     }
+
+    // get one object, texture, or material
     if (target == "object") {
         std::string name = get_json<std::string>(cmd, "name");
         return objects_details.at(name);
@@ -186,6 +197,8 @@ nlohmann::json JsonParser::do_get(const nlohmann::json& cmd) const {
         std::string name = get_json<std::string>(cmd, "name");
         return textures_details.at(name);
     }
+
+    // get all objects, materials, or textures
     if (target == "objects") {
         nlohmann::json package = nlohmann::json::array();
         int i = 0;
@@ -217,6 +230,8 @@ nlohmann::json JsonParser::do_get(const nlohmann::json& cmd) const {
 }
 
 void JsonParser::build() {
+    // actually create and fill the world
+    // this is essentially identical to the original parser, except it uses nlohmann and JSON instead of stringstream and raw text
     textures.clear();
     materials.clear();
     world = World{};
@@ -227,6 +242,7 @@ void JsonParser::build() {
     verify();
 }
 
+// seperate build and make functions, since working with unique pointers
 void JsonParser::build_textures() {
     for (const auto& [name, j] : textures_details) {
         textures[name] = make_texture(j);

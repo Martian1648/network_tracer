@@ -15,6 +15,8 @@ class Texture;
 
 using Materials  = std::map<std::string, std::unique_ptr<Material>>;
 using Textures   = std::map<std::string, std::unique_ptr<Texture>>;
+
+// stores the state
 using DetailsMap = std::map<std::string, nlohmann::json>;
 
 inline void from_json(const nlohmann::json& j, Vector3D& v) {
@@ -43,6 +45,7 @@ public:
     int ray_depth, ray_samples;
     int num_threads = 1;
 
+    // stores objects, materials, textures, and other pertinent data
     DetailsMap objects_details, materials_details, textures_details;
     nlohmann::json misc_details = nlohmann::json::object();
 
@@ -67,6 +70,7 @@ private:
     Vector3D camera_up;
     double camera_fov = 90.0;
 
+    // these aren't going to change, so they can be pre-set
     int rows = 720;
     int columns = 1280;
     double aspect = static_cast<double>(columns) / rows;

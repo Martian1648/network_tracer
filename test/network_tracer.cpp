@@ -19,37 +19,30 @@
 #include <unistd.h>
 #include "jsonparser.h"
 
+// Pre-declare functions
 void print_progress(long long ray_num, long long total_rays);
 Color trace(const World& world, const Ray& ray);
 Color trace_path(const BVH& bvh, const Ray& ray, int depth);
 void render(const BVH& bvh, const Camera& camera, int depth, int samples, Pixels& pixels,
             std::atomic<long long>& rays_done, long long total_rays, bool progress=false);
-
-
-
-
-
 void send_msg(int& c, const int& size);
 void send_msg(int& c, const std::string msg);
 void send_mesg(int&c, const nlohmann::json& obj);
+std::pair<ssize_t, nlohmann::json> receive(int& c);
 
-std::pair<ssize_t, nlohmann::json> receive(int& c) {
-    char buffer[4096] = {};
-    auto received = recv(c, &buffer, sizeof(buffer), 0);
-    std::string msg(buffer,static_cast<std::size_t>(received));
-    return {received, nlohmann::json::parse(msg)};
-}
-
+// Runs from the command line, takes in address & port number
 int main(int argc, char* argv[]) {
     if (argc < 3) {
         std::cout << "Usage: " << argv[0] << " {ipaddr} {port}\n";
         return 0;
     }
+    // create socket
     int s = socket(AF_INET, SOCK_STREAM, 0);
     if (s == -1) {
         throw std::runtime_error("Cannot create socket");
     }
     int port = std::stoi(argv[2]);
+    //set it to reuse the address
     int opt = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     struct sockaddr_in server;
@@ -57,45 +50,56 @@ int main(int argc, char* argv[]) {
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
     socklen_t len = sizeof(server);
-
     if (bind(s, reinterpret_cast<struct sockaddr *>(&server), len) < 0) {
         throw std::runtime_error("Cannot bind");
     }
 
+    //listens for only one client
     if (listen(s, 1) < 0) {
         throw std::runtime_error("Deaf");
     }
 
-
+    // accept connection
     int c = accept(s, reinterpret_cast< struct sockaddr *>(&server), &len);
     if (c < 0) {
         throw std::runtime_error("No acceptance");
     }
+
+    // send confirmation message to client
     send_msg(c, "Connection made");
 
-
+    // create parser
     JsonParser parser;
+
+    // start the primary run loop
     while (true) {
         try {
+            // get JSON structured input from client and unpacks
             auto [received, data] = receive(c);
             if (received <= 0) {
                 continue;
             }
+
+            // handle quits
             if (data.contains("action") && get_json<std::string>(data, "action") == "QUIT") {
                 break;
             }
+
+            //apply commands and stores any output, which would occur if it was a GET
             auto output = parser.handle_command(data);
+
+            // send requested data if GET and skip generation
             if (data.contains("action") && get_json<std::string>(data, "action") == "GET") {
                 send_mesg(c, output);
                 continue;
             }
+
+            // build the "world" from the state
             parser.build();
             World world = parser.get_world();
             BVH bvh{world.objects};
-
             Pixels pixels = parser.get_pixels();
             Camera camera = parser.get_camera();
-
             int depth = parser.ray_depth;
             int samples = parser.ray_samples;
             int num_threads = parser.num_threads;
@@ -107,7 +111,6 @@ int main(int argc, char* argv[]) {
             for (int i = 0; i < thread_count-1; ++i) {
                 images.push_back(pixels);
             }
-
             // launch additional threads
             std::vector<std::thread> threads;
             int base = samples / thread_count;
@@ -118,34 +121,37 @@ int main(int argc, char* argv[]) {
                               std::ref(images.at(i)), std::ref(rays_done), total_rays, false};
                 threads.push_back(std::move(t));
             }
-
             // render on main thread
             int main_samples = base + (thread_count - 1 < extra ? 1 : 0);
             render(bvh, camera, depth, main_samples, pixels, rays_done, total_rays, false);
-
-
             // wait for other threads to finish
             for (std::thread& t : threads) {
                 t.join();
             }
-
             // collect all image data
             for (const Pixels& p : images) {
                 for (std::size_t i = 0; i < p.values.size(); ++i) {
                     pixels.values.at(i) += p.values.at(i);
                 }
             }
-
             // normalize color values by number of threads
             for (Color& c : pixels.values) {
                 c /= samples;
             }
 
-            //pixels.save_png(parser.filename);
+            //get the pixels before encoding as a PNG
             auto z = pixels.get_bytes();
+
+            // send a warning to client of how large the image is
             send_msg(c, z.size());
+
+            // get acknowledgement
             auto [_, a] = receive(c);
+
+            // change to raw (ish) bytes
             const char* bytes = reinterpret_cast<const char*>(z.data());
+
+            // send in chunks
             auto remaining = z.size();
             while (remaining > 0) {
                 auto track = send(c, bytes, remaining, 0);
@@ -158,6 +164,7 @@ int main(int argc, char* argv[]) {
 
         }
         catch (std::exception& err) {
+            // close connections
             std::cout << err.what() << '\n';
             send_msg(c, "Something went wrong");
             close(c);
@@ -166,13 +173,21 @@ int main(int argc, char* argv[]) {
             break;
         }
     }
+    // close connections again, just in case.
     close(c);
     close(s);
 
 }
 
+// receive and unpack message from client.
+std::pair<ssize_t, nlohmann::json> receive(int& c) {
+    char buffer[4096] = {};
+    auto received = recv(c, &buffer, sizeof(buffer), 0);
+    std::string msg(buffer,static_cast<std::size_t>(received));
+    return {received, nlohmann::json::parse(msg)};
+}
 
-
+// send a WARNING message
 void send_msg(int& c, const int& size) {
     nlohmann::json message = nlohmann::json::object();
     message["type"]="WARNING";
@@ -180,6 +195,8 @@ void send_msg(int& c, const int& size) {
     auto package = message.dump();
     send(c, package.c_str(), package.size(), 0);
 }
+
+// Send a basic message
 void send_msg(int& c, const std::string msg) {
     nlohmann::json message = nlohmann::json::object();
     message["type"]="MESSAGE";
@@ -187,6 +204,8 @@ void send_msg(int& c, const std::string msg) {
     auto package = message.dump();
     send(c, package.c_str(), package.size(), 0);
 }
+
+// Send an ANSWER to a GET
 void send_mesg(int&c, const nlohmann::json& obj) {
     nlohmann::json message = nlohmann::json::object();
     message["type"] = "ANSWER";
