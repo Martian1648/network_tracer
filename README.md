@@ -42,11 +42,17 @@ This is because the program runs using Linux, and thus will use the subsystem's 
 
 With that set up, first run the server program, putting into the console `./cmake-build-debug/test/network_tracer 0.0.0.0 [desired_port]`. Then the client by running `shell.py`, which will then ask for the ipaddr and port. The ipaddr to enter will be the one found by running `ipconfig`, and the port will be whatever port you chose for the server. Complete these, and you should be connected.
 
-### Defaults
+## Defaults
  
+---
+
+The **Defaults** and **Inputs Reference** section were made with *Claude*, because they would have been frankly long, verbose, and tedious to write otherwise.
+
+---
+
 The server starts with a small set of pre-loaded definitions so that you can render a scene without having to define every piece yourself.
  
-#### Default textures
+### Default textures
  
 | Name    | Type  | Color           |
 | ------- | ----- | --------------- |
@@ -55,7 +61,7 @@ The server starts with a small set of pre-loaded definitions so that you can ren
 | `green` | solid | `(0.0 1.0 0.0)` |
 | `red`   | solid | `(1.0 0.0 0.0)` |
  
-#### Default materials
+### Default materials
  
 | Name    | Type       | Texture | Emitting |
 | ------- | ---------- | ------- | -------- |
@@ -64,13 +70,13 @@ The server starts with a small set of pre-loaded definitions so that you can ren
 | `green` | lambertian | `green` | false    |
 | `red`   | lambertian | `red`   | false    |
  
-#### Default object
+### Default object
  
 | Name            | Center                | Radius   | Material |
 | --------------- | --------------------- | -------- | -------- |
 | `default_light` | `(100.0 100.0 1100.0)` | `1000.0` | `light`  |
  
-#### Default camera
+### Default camera
  
 | Field           | Value             |
 | --------------- | ----------------- |
@@ -79,7 +85,7 @@ The server starts with a small set of pre-loaded definitions so that you can ren
 | `up`            | `(0.0 0.0 1.0)`   |
 | `fov`           | `90.0`            |
  
-#### Default render settings
+### Default render settings
  
 | Field         | Value          |
 | ------------- | -------------- |
@@ -88,7 +94,7 @@ The server starts with a small set of pre-loaded definitions so that you can ren
 | `output name` | `default.png`  |
 
 
-### Inputs Reference
+## Inputs Reference
 Every command the shell accepts begins with one of six **actions**: `ADD`, `EDIT`, `DELETE`, `SET`, `GET`, or `QUIT`. Vectors are written in parentheses with three numbers separated by spaces, e.g. `(1.0 0.5 0.0)`. Booleans accept any of `true`/`t`/`yes`/`y`/`1` or `false`/`f`/`no`/`n`/`0`.
  
 ### ADD and EDIT
